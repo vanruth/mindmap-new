@@ -407,10 +407,11 @@ function drawConnections() {
     if (!parent) return;
     const nRect = n.el.getBoundingClientRect();
     const pRect = parent.el.getBoundingClientRect();
-    const x1 = pRect.left + pRect.width/2 - viewportOffset.left;
-    const y1 = pRect.top + pRect.height/2 - viewportOffset.top;
-    const x2 = nRect.left + nRect.width/2 - viewportOffset.left;
-    const y2 = nRect.top + nRect.height/2 - viewportOffset.top;
+    // *** Adjust for zoomLevel ***
+    const x1 = (pRect.left + pRect.width/2 - viewportOffset.left) / zoomLevel;
+    const y1 = (pRect.top + pRect.height/2 - viewportOffset.top) / zoomLevel;
+    const x2 = (nRect.left + nRect.width/2 - viewportOffset.left) / zoomLevel;
+    const y2 = (nRect.top + nRect.height/2 - viewportOffset.top) / zoomLevel;
     const path = document.createElementNS('http://www.w3.org/2000/svg','path');
     const controlX = x1 + (x2-x1)/2;
     path.setAttribute('d',`M${x1} ${y1} C${controlX} ${y1}, ${controlX} ${y2}, ${x2} ${y2}`);
@@ -418,7 +419,6 @@ function drawConnections() {
     connectionsSvg.appendChild(path);
   });
 }
-
 // Dragging/Panning (Mouse)
 function startDrag(e, el) {
   draggingNode = el;
