@@ -151,6 +151,9 @@ const MAX_ZOOM = 2.0;
 function applyZoom() {
   canvas.style.transform = `scale(${zoomLevel})`;
   canvas.style.transformOrigin = "0 0";
+
+  connectionsSvg.style.transform = `scale(${zoomLevel})`;
+  connectionsSvg.style.transformOrigin = "0 0";
 }
 
 // Accessibility: Keyboard navigation stubs (expand as needed)
