@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mindmap Builder</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --card: #fff;
+      --border: #e5e7eb;
+      --border-hover: #d4d4d8;
+      --text: #1f2937;
+      --text-muted: #6b7280;
+      --hover-bg: #f5f5f5;
+      --connection: #e5e7eb;
+      --shadow-subtle: 0 1px 3px rgba(0,0,0,0.05);
+      --shadow-medium: 0 4px 12px rgba(0,0,0,0.08);
+      --shadow-large: 0 4px 16px rgba(0,0,0,0.1);
+      --danger: #ef4444;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', Arial, sans-serif;}
+    body { background: var(--bg); overflow:hidden; height:100vh; color:var(--text);}
+    #canvas {width:100%; height:100vh; position:relative; cursor:grab;}
+    #canvas.grabbing {cursor:grabbing;}
+    #connections {position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:0;}
+    .connection {stroke:var(--connection); stroke-width:2; fill:none;}
+    .node {position:absolute; background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px 16px; min-width:80px; box-shadow:var(--shadow-subtle); transition:all .15s; cursor:move; z-index:10; user-select:none;}
+    .node:hover {box-shadow:var(--shadow-medium); border-color:var(--border-hover);}
+    .node.dragging {opacity:.8; z-index:1000;}
+    .node-text {outline:none; border:none; background:transparent; font-size:14px; font-weight:500; color:var(--text); width:100%; text-align:center; cursor:text; max-width:100%;}
+    .node-actions {position:absolute; top:-24px; left:50%; transform:translateX(-50%); display:flex; gap:4px; pointer-events:none; opacity:0; transition:opacity .1s;}
+    .node:hover .node-actions {opacity:1; pointer-events:all;}
+    .action-button {width:28px; height:28px; border-radius:50%; border:1px solid var(--border); background:var(--card); color:var(--text-muted); cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow-subtle); transition:background .1s, color .1s;}
+    .action-button:hover {background:var(--hover-bg); color:var(--text);}
+    .action-button.delete-btn {color:var(--danger); position:absolute; top:0; right:-32px; opacity:0; transition:opacity .15s;}
+    .node:hover .delete-btn {opacity:1;}
+    .action-button.delete-btn:hover {background:#fecaca;}
+    .resize-handle {position:absolute; bottom:0; right:0; width:12px; height:12px; cursor:nwse-resize; background:transparent; z-index:20;}
+    #toolbar {position:fixed; top:16px; left:50%; transform:translateX(-50%); display:flex; gap:8px; background:rgba(255,255,255,0.9); backdrop-filter:blur(8px); padding:8px 12px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.06); opacity:.2; transition:opacity .2s; z-index:100;}
+    #toolbar:hover {opacity:1;}
+    #toolbar input {padding:6px 10px; border:1px solid var(--border); border-radius:6px; width:160px; font-size:13px; font-weight:400; color:var(--text); background:var(--card); outline:none; transition:border-color .15s;}
+    #toolbar input:focus {border-color:var(--text-muted);}
+    #toolbar button {display:flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0; border:1px solid var(--border); border-radius:6px; background:var(--card); cursor:pointer; color:var(--text-muted); transition:background .1s, border-color .1s, color .1s;}
+    #toolbar button:hover {background:var(--hover-bg); border-color:var(--border-hover); color:var(--text);}
+    #toolbar button:disabled {opacity:.4; cursor:not-allowed;}
+    #gallery {position:fixed; right:16px; top:80px; width:280px; max-height:calc(100vh - 100px); background:var(--card); border-radius:8px; box-shadow:var(--shadow-large); overflow:auto; z-index:99; display:none; padding:12px; border:1px solid var(--border);}
+    .gallery-header {font-size:14px; font-weight:600; color:var(--text); margin-bottom:12px; padding:4px 0; border-bottom:1px solid var(--border);}
+    .gallery-item {display:flex; align-items:center; padding:8px 10px; border-radius:6px; margin-bottom:6px; cursor:pointer; transition:background .1s; border:1px solid transparent;}
+    .gallery-item:hover {background:var(--hover-bg); border-color:var(--border);}
+    .item-info {flex-grow:1; padding-left:8px;}
+    .item-title {font-size:14px; font-weight:500; color:var(--text);}
+    .item-date {font-size:11px; color:var(--text-muted);}
+    .item-action-btn {background:none; border:none; cursor:pointer; color:var(--text-muted); padding:0 4px; transition:color .1s;}
+    .item-action-btn:hover {color:var(--text);}
+    .item-action-btn.delete:hover {color:var(--danger);}
+    .save-group {display:flex; position:relative;}
+    #save-main-btn {border-top-right-radius:0; border-bottom-right-radius:0;}
+    #save-dropdown-btn {width:28px; height:32px; border-left:none; border-top-left-radius:0; border-bottom-left-radius:0; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+    #save-dropdown-menu {position:absolute; top:38px; right:0; background:var(--card); border:1px solid var(--border); border-radius:6px; box-shadow:var(--shadow-large); display:none; flex-direction:column; width:140px; z-index:200;}
+    .save-dropdown-item {padding:8px 12px; cursor:pointer; font-size:13px; color:var(--text);}
+    .save-dropdown-item:hover {background:var(--hover-bg);}
+    #modal {position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:2000;}
+    .modal-content {background:var(--card); padding:24px; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.15); width:90%; max-width:400px;}
+    .modal-message {font-size:15px; font-weight:500; margin-bottom:16px; color:var(--text);}
+    .modal-input {width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; font-size:14px; margin-bottom:20px; color:var(--text);}
+    .modal-buttons {display:flex; justify-content:flex-end; gap:10px;}
+    .modal-btn {padding:8px 16px; border:none; border-radius:6px; font-size:14px; font-weight:500; cursor:pointer; transition:background .1s, opacity .1s;}
+    .modal-btn.cancel {background:none; color:var(--text-muted);}
+    .modal-btn.cancel:hover {background:var(--hover-bg); color:var(--text);}
+    .modal-btn.confirm {background:var(--text); color:var(--card);}
+    .modal-btn.confirm:hover {background:#4b5563;}
+    .modal-btn.ok {background:var(--text); color:var(--card);}
+    .modal-btn.ok:hover {background:#4b5563;}
+    #link-display {font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:12px; background:var(--hover-bg); border:1px solid var(--border); padding:8px; border-radius:4px; word-break:break-all; color:var(--text-muted);}
+  </style>
+</head>
+<body>
+  <div id="canvas" role="main" tabindex="0" aria-label="Mindmap canvas">
+    <svg id="connections"></svg>
+    </div>
+  <div id="toolbar" role="toolbar" aria-label="Mindmap toolbar">
+    <input id="map-title" type="text" aria-label="Map title" placeholder="Untitled">
+    <button id="undo-btn" aria-label="Undo" title="Undo"><i data-lucide="undo-2"></i></button>
+    <button id="redo-btn" aria-label="Redo" title="Redo"><i data-lucide="redo-2"></i></button>
+    <div class="save-group">
+      <button id="save-main-btn" aria-label="Save" title="Save"><i data-lucide="save"></i></button>
+      <button id="save-dropdown-btn" aria-label="More Save Options" title="More Save Options"><i data-lucide="chevron-down"></i></button>
+      <div id="save-dropdown-menu">
+        <div class="save-dropdown-item" id="save-as-menu-item">Save As…</div>
+      </div>
+    </div>
+    <button id="new-btn" aria-label="New Map" title="New Map"><i data-lucide="file-plus"></i></button>
+    <button id="gallery-btn" aria-label="Open Gallery" title="Open Gallery"><i data-lucide="folder-open"></i></button>
+  </div>
+  <div id="gallery">
+    <div class="gallery-header">Saved Maps</div>
+    <div id="gallery-list">
+      </div>
+  </div>
+  <div id="modal">
+    <div class="modal-content">
+      <div id="modal-message" class="modal-message"></div>
+      <input type="text" id="modal-input" class="modal-input" style="display: none;">
+      <div id="link-display-container" style="display: none;">
+        <div id="link-display"></div>
+      </div>
+      <div class="modal-buttons">
+        <button id="modal-cancel" class="modal-btn cancel" style="display: none;">Cancel</button>
+        <button id="modal-confirm" class="modal-btn confirm" style="display: none;">Confirm</button>
+        <button id="modal-ok" class="modal-btn ok" style="display: none;">OK</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const APP_BASE_URL = 'https://mindmap-puce.vercel.app';
+const LOCAL_STORAGE_KEY = 'mindmap-data';
+const canvas = document.getElementById('canvas');
+const connectionsSvg = document.getElementById('connections');
+const mapTitleInput = document.getElementById('map-title');
+const gallery = document.getElementById('gallery');
+const galleryList = document.getElementById('gallery-list');
+const modal = document.getElementById('modal');
+const modalMessage = document.getElementById('modal-message');
+const modalInput = document.getElementById('modal-input');
+const modalCancel = document.getElementById('modal-cancel');
+const modalConfirm = document.getElementById('modal-confirm');
+const modalOK = document.getElementById('modal-ok');
+const linkDisplayContainer = document.getElementById('link-display-container');
+const linkDisplay = document.getElementById('link-display');
+// History and State
+let nodes = [];
+let history = [];
+let historyIndex = -1;
+let currentMapIndex = null;
+let originalTitle = '';
+let draggingNode = null;
+let resizingNode = null;
+let panState = { isPanning: false, startX: 0, startY: 0, offsetX:0, offsetY:0 };
+let resizeStart = { x: 0, y: 0, width: 0, height: 0 };
+
+// Accessibility: Keyboard navigation stubs (expand as needed)
+canvas.addEventListener('keydown', (e) => {
+  // Example: tab moves between nodes, etc.
+});
+
+// Utility Functions
+function sanitizeText(text) {
+  return text.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+}
+function safeGetLocalStorage(key, fallback='[]') {
+  try { return JSON.parse(localStorage.getItem(key) || fallback); }
+  catch (e) { showAlert("Local storage not available. Saving is disabled."); return JSON.parse(fallback);}
+}
+function safeSetLocalStorage(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); }
+  catch (e) { showAlert("Local storage not available. Cannot save."); }
+}
+// *** NEW FUNCTION FOR AUTO-RESIZE LOGIC ***
+function updateNodeSize(nodeEl, textEl) {
+  const MIN_WIDTH = 80;
+  const MAX_WIDTH = 250; // Horizontal size limit before enabling vertical wrapping
+  const PADDING = 32; // 16px left + 16px right padding
+
+  // 1. Temporarily allow no-wrap to measure the true width needed for a single line
+  // This is the key to measuring the "unconstrained" width for the content.
+  textEl.style.whiteSpace = 'nowrap';
+  let requiredWidth = textEl.scrollWidth + PADDING;
+
+  if (requiredWidth <= MAX_WIDTH) {
+    // Horizontal growth (single line mode)
+    nodeEl.style.width = Math.max(MIN_WIDTH, requiredWidth) + 'px';
+    nodeEl.style.height = ''; // Clear height to allow auto-sizing if it grows short
+    textEl.style.whiteSpace = 'nowrap'; // Enforce single line
+  } else {
+    // Max width reached, vertical growth (wrapping mode)
+    nodeEl.style.width = MAX_WIDTH + 'px';
+    nodeEl.style.height = ''; // Clear height to allow vertical auto-sizing
+    textEl.style.whiteSpace = 'normal'; // Allow wrapping
+  }
+  
+  // Re-center text (already done by CSS, but set explicitly for robustness)
+  textEl.style.textAlign = 'center';
+}
+// *** END NEW FUNCTION ***
+
+// Modal Functions (alert, prompt, confirm, link)
+function showAlert(message) {
+  return new Promise(resolve => {
+    modalMessage.textContent = message;
+    modalInput.style.display = 'none';
+    linkDisplayContainer.style.display = 'none';
+    modalCancel.style.display = 'none';
+    modalConfirm.style.display = 'none';
+    modalOK.style.display = 'inline-block';
+    const handler = () => { modalOK.removeEventListener('click', handler); modal.style.display = 'none'; resolve();}
+    modalOK.addEventListener('click', handler);
+    modal.style.display = 'flex';
+  });
+}
+function showPrompt(message, defaultValue='') {
+  return new Promise(resolve => {
+    modalMessage.textContent = message; modalInput.value = defaultValue; modalInput.style.display = 'block'; linkDisplayContainer.style.display = 'none';
+    modalCancel.style.display = 'inline-block'; modalConfirm.style.display = 'inline-block'; modalOK.style.display = 'none';
+    const handleConfirm = () => { removeHandlers(); modal.style.display = 'none'; resolve(modalInput.value);}
+    const handleCancel = () => { removeHandlers(); modal.style.display = 'none'; resolve(null);}
+    function removeHandlers() { modalConfirm.removeEventListener('click', handleConfirm); modalCancel.removeEventListener('click', handleCancel);}
+    modalConfirm.addEventListener('click', handleConfirm); modalCancel.addEventListener('click', handleCancel);
+    modal.style.display = 'flex'; modalInput.focus(); modalInput.select();
+  });
+}
+function showConfirm(message) {
+  return new Promise(resolve => {
+    modalMessage.textContent = message; 
+    modalInput.style.display = 'none';
+    linkDisplayContainer.style.display = 'none';
+    
+    modalCancel.style.display = 'inline-block'; 
+    modalConfirm.style.display = 'inline-block'; 
+    modalOK.style.display = 'none';
+    
+    const handleConfirm = () => { removeHandlers(); modal.style.display = 'none'; resolve(true);}
+    const handleCancel = () => { removeHandlers(); modal.style.display = 'none'; resolve(false);}
+    
+    function removeHandlers() { 
+      modalConfirm.removeEventListener('click', handleConfirm); 
+      modalCancel.removeEventListener('click', handleCancel);
+    }
+    
+    modalConfirm.addEventListener('click', handleConfirm); 
+    modalCancel.addEventListener('click', handleCancel);
+    modal.style.display = 'flex'; 
+    modalConfirm.focus();
+  });
+}
+function showLink(message, link) {
+  return new Promise(resolve => {
+    modalMessage.textContent = message; linkDisplay.textContent = link; linkDisplayContainer.style.display = 'block'; modalInput.style.display = 'none';
+    modalCancel.style.display = 'none'; modalConfirm.style.display = 'none'; modalOK.style.display = 'inline-block';
+    const handler = () => { modalOK.removeEventListener('click', handler); modal.style.display = 'none'; resolve(); }
+    modalOK.addEventListener('click', handler);
+    modal.style.display = 'flex';
+  });
+}
+
+// History Management
+function captureState() {
+  // Avoid thrashing for huge maps: max 50
+  const state = {
+    nodes: nodes.map(n => ({
+      id: n.id,
+      parentId: n.parentId,
+      text: sanitizeText(n.el.querySelector('.node-text').textContent),
+      x: parseFloat(n.el.style.left),
+      y: parseFloat(n.el.style.top),
+      width: n.el.offsetWidth,
+      height: n.el.offsetHeight
+    })),
+    title: mapTitleInput.value
+  };
+  if (historyIndex < history.length - 1) history = history.slice(0, historyIndex+1);
+  history.push(JSON.parse(JSON.stringify(state)));
+  if (history.length > 50) history.shift();
+  else historyIndex++;
+  updateHistoryButtons();
+}
+function restoreState(state) {
+  clearCanvas();
+  state.nodes.forEach(n => createNode(n.text, n.x, n.y, n.parentId, n.id, n.width, n.height, true));
+  mapTitleInput.value = state.title;
+  drawConnections();
+  updateHistoryButtons();
+}
+function updateHistoryButtons() {
+  document.getElementById('undo-btn').disabled = historyIndex <= 0;
+  document.getElementById('redo-btn').disabled = historyIndex >= history.length - 1;
+}
+
+// Node Management
+function clearCanvas() {
+  nodes.forEach(n => n.el.remove());
+  nodes = [];
+  connectionsSvg.innerHTML = '';
+}
+function findNodeById(id) {
+  return nodes.find(n => n.id === id);
+}
+function createNode(text, x, y, parentId = null, id = null, w = null, h = null, skipCapture = false) {
+  const nodeEl = document.createElement('div');
+  nodeEl.className = 'node';
+  nodeEl.style.left = x + 'px';
+  nodeEl.style.top = y + 'px';
+  id = id || 'n' + Date.now() + Math.random().toString(36).substring(2,7);
+  nodeEl.dataset.id = id;
+  nodeEl.dataset.parentId = parentId || '';
+  const textEl = document.createElement('div');
+  textEl.className = 'node-text'; textEl.contentEditable = true; textEl.textContent = text;
+  nodeEl.appendChild(textEl);
+  const actionsEl = document.createElement('div');
+  actionsEl.className = 'node-actions';
+  const addChildBtn = document.createElement('button');
+  addChildBtn.className = 'action-button'; addChildBtn.setAttribute('aria-label','Add Child Node');
+  addChildBtn.innerHTML = '<i data-lucide="plus" style="width:16px; height:16px;"></i>';
+  addChildBtn.title = 'Add Child Node';
+  addChildBtn.onclick = (e) => {e.stopPropagation(); addChildNode(id);}
+  actionsEl.appendChild(addChildBtn);
+  nodeEl.appendChild(actionsEl);
+  if (parentId !== null) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'action-button delete-btn'; deleteBtn.setAttribute('aria-label','Delete Node');
+    deleteBtn.innerHTML = '<i data-lucide="x" style="width:16px; height:16px;"></i>';
+    deleteBtn.title = 'Delete Node';
+    deleteBtn.onclick = (e) => {e.stopPropagation(); deleteNode(id);}
+    nodeEl.appendChild(deleteBtn);
+  }
+  const resizeHandle = document.createElement('div');
+  resizeHandle.className = 'resize-handle';
+  resizeHandle.addEventListener('mousedown', (e) => {e.stopPropagation(); startResize(e, nodeEl);});
+  resizeHandle.addEventListener('touchstart', (e) => {e.stopPropagation(); startTouchResize(e, nodeEl);});
+  nodeEl.appendChild(resizeHandle);
+if (w && h) {
+  nodeEl.style.width = w + 'px';
+  nodeEl.style.height = h + 'px';
+} else {
+  // New nodes only
+  updateNodeSize(nodeEl, textEl);
+}
+  canvas.appendChild(nodeEl);
+  nodes.push({ id, el: nodeEl, parentId });
+  nodeEl.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.action-button') || e.target.closest('.resize-handle') || e.target === textEl) return;
+    startDrag(e, nodeEl);
+  });
+  nodeEl.addEventListener('touchstart', (e) => {
+    if (e.target.closest('.action-button') || e.target.closest('.resize-handle') || e.target === textEl) return;
+    startTouchDrag(e, nodeEl);
+  });
+  // *** MODIFIED INPUT LISTENER ***
+    textEl.addEventListener('input', () => {
+    updateNodeSize(nodeEl, textEl);
+    drawConnections();
+  });
+  textEl.addEventListener('blur', captureState);
+
+  // Initial auto-resize if width not provided
+  if (!w) { 
+    updateNodeSize(nodeEl, textEl);
+  }
+
+  drawConnections();
+  lucide.createIcons();
+  if (!skipCapture) captureState();
+  return id;
+}
+function addChildNode(parentId) {
+  const parent = findNodeById(parentId);
+  if (!parent) return;
+  const pRect = parent.el.getBoundingClientRect();
+  const children = nodes.filter(n => n.parentId === parentId);
+  const childCount = children.length;
+  const radius = 200;
+  const angle = (Math.PI * 2 * childCount / 5) + (Math.random() * 0.4 - 0.2);
+  const newX = parseFloat(parent.el.style.left) + pRect.width / 2 + Math.cos(angle) * radius - 60;
+  const newY = parseFloat(parent.el.style.top) + pRect.height / 2 + Math.sin(angle) * radius - 30;
+  createNode('New Idea', newX, newY, parentId);
+}
+function deleteNode(id) {
+  const nodeIndex = nodes.findIndex(n => n.id === id);
+  if (nodeIndex === -1) return;
+  nodes.filter(n => n.parentId === id).forEach(child => deleteNode(child.id));
+  nodes[nodeIndex].el.remove();
+  nodes.splice(nodeIndex, 1);
+  drawConnections();
+  captureState();
+}
+
+// Drawing Connections and SVG Resize
+function drawConnections() {
+  // Update SVG size to canvas
+  connectionsSvg.setAttribute('width', canvas.offsetWidth);
+  connectionsSvg.setAttribute('height', canvas.offsetHeight);
+  connectionsSvg.innerHTML = '';
+  const viewportOffset = canvas.getBoundingClientRect();
+  nodes.forEach(n => {
+    if (!n.parentId) return;
+    const parent = findNodeById(n.parentId);
+    if (!parent) return;
+    const nRect = n.el.getBoundingClientRect();
+    const pRect = parent.el.getBoundingClientRect();
+    const x1 = pRect.left + pRect.width/2 - viewportOffset.left;
+    const y1 = pRect.top + pRect.height/2 - viewportOffset.top;
+    const x2 = nRect.left + nRect.width/2 - viewportOffset.left;
+    const y2 = nRect.top + nRect.height/2 - viewportOffset.top;
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    const controlX = x1 + (x2-x1)/2;
+    path.setAttribute('d',`M${x1} ${y1} C${controlX} ${y1}, ${controlX} ${y2}, ${x2} ${y2}`);
+    path.setAttribute('class','connection');
+    connectionsSvg.appendChild(path);
+  });
+}
+
+// Dragging/Panning (Mouse)
+function startDrag(e, el) {
+  draggingNode = el;
+  draggingNode.classList.add('dragging');
+  const rect = draggingNode.getBoundingClientRect();
+  panState.offsetX = e.clientX - rect.left;
+  panState.offsetY = e.clientY - rect.top;
+  e.preventDefault();
+  document.addEventListener('mousemove', handleDrag);
+  document.addEventListener('mouseup', endDrag);
+}
+function handleDrag(e) {
+  if (draggingNode) {
+    draggingNode.style.left = (e.clientX - panState.offsetX) + 'px';
+    draggingNode.style.top = (e.clientY - panState.offsetY) + 'px';
+    drawConnections();
+  } else if (panState.isPanning) {
+    const dx = e.clientX - panState.startX;
+    const dy = e.clientY - panState.startY;
+    nodes.forEach(n => {
+      n.el.style.left = (parseFloat(n.el.style.left) + dx) + 'px';
+      n.el.style.top = (parseFloat(n.el.style.top) + dy) + 'px';
+    });
+    panState.startX = e.clientX;
+    panState.startY = e.clientY;
+    drawConnections();
+  }
+}
+function endDrag() {
+  if (draggingNode) {
+    draggingNode.classList.remove('dragging');
+    captureState();
+  }
+  draggingNode = null;
+  document.removeEventListener('mousemove', handleDrag);
+  document.removeEventListener('mouseup', endDrag);
+}
+canvas.addEventListener('mousedown', (e) => {
+  if (e.target === canvas || e.target === connectionsSvg) {
+    panState.isPanning = true;
+    panState.startX = e.clientX;
+    panState.startY = e.clientY;
+    canvas.classList.add('grabbing');
+    document.addEventListener('mousemove', handleDrag);
+    document.addEventListener('mouseup', endPan);
+  }
+});
+function endPan() {
+  if (panState.isPanning) {
+    captureState();
+  }
+  panState.isPanning = false;
+  canvas.classList.remove('grabbing');
+  document.removeEventListener('mousemove', handleDrag);
+  document.removeEventListener('mouseup', endPan);
+}
+
+// Dragging/Panning & Resizing (Touch)
+function startTouchDrag(e, el) {
+  draggingNode = el;
+  draggingNode.classList.add('dragging');
+  const rect = draggingNode.getBoundingClientRect();
+  const touch = e.touches[0];
+  panState.offsetX = touch.clientX - rect.left;
+  panState.offsetY = touch.clientY - rect.top;
+  document.addEventListener('touchmove', handleTouchDrag, {passive:false});
+  document.addEventListener('touchend', endTouchDrag);
+}
+function handleTouchDrag(e) {
+  if (draggingNode) {
+    const touch = e.touches[0];
+    draggingNode.style.left = (touch.clientX - panState.offsetX) + 'px';
+    draggingNode.style.top = (touch.clientY - panState.offsetY) + 'px';
+    drawConnections();
+  } else if (panState.isPanning) {
+    const touch = e.touches[0];
+    const dx = touch.clientX - panState.startX;
+    const dy = touch.clientY - panState.startY;
+    nodes.forEach(n => {
+      n.el.style.left = (parseFloat(n.el.style.left) + dx) + 'px';
+      n.el.style.top = (parseFloat(n.el.style.top) + dy) + 'px';
+    });
+    panState.startX = touch.clientX;
+    panState.startY = touch.clientY;
+    drawConnections();
+  }
+}
+function endTouchDrag() {
+  if (draggingNode) {
+    draggingNode.classList.remove('dragging');
+    captureState();
+  }
+  draggingNode = null;
+  document.removeEventListener('touchmove', handleTouchDrag);
+  document.removeEventListener('touchend', endTouchDrag);
+}
+canvas.addEventListener('touchstart', (e) => {
+  const touch = e.touches[0];
+  if (e.target === canvas || e.target === connectionsSvg) {
+    panState.isPanning = true;
+    panState.startX = touch.clientX;
+    panState.startY = touch.clientY;
+    canvas.classList.add('grabbing');
+    document.addEventListener('touchmove', handleTouchDrag, {passive:false});
+    document.addEventListener('touchend', endTouchPan);
+  }
+});
+function endTouchPan() {
+  panState.isPanning = false;
+  canvas.classList.remove('grabbing');
+  document.removeEventListener('touchmove', handleTouchDrag);
+  document.removeEventListener('touchend', endTouchPan);
+}
+// Resizing
+function startResize(e, el) {
+  resizingNode = el;
+  resizeStart = {
+    x: e.clientX,
+    y: e.clientY,
+    width: el.offsetWidth,
+    height: el.offsetHeight
+  };
+  document.addEventListener('mousemove', handleResize);
+  document.addEventListener('mouseup', endResize);
+}
+function handleResize(e) {
+  if (!resizingNode) return;
+  const dx = e.clientX - resizeStart.x;
+  const dy = e.clientY - resizeStart.y;
+  resizingNode.style.width = Math.max(80, resizeStart.width + dx) + 'px';
+  resizingNode.style.height = Math.max(40, resizeStart.height + dy) + 'px';
+  const textEl = resizingNode.querySelector('.node-text');
+  if (textEl.style.whiteSpace !== 'normal') { textEl.style.whiteSpace = 'normal'; }
+  drawConnections();
+}
+function endResize() {
+  if (resizingNode) { captureState();}
+  resizingNode = null;
+  document.removeEventListener('mousemove', handleResize);
+  document.removeEventListener('mouseup', endResize);
+}
+// Resizing - Touch
+function startTouchResize(e, el) {
+  resizingNode = el;
+  const touch = e.touches[0];
+  resizeStart = {
+    x: touch.clientX,
+    y: touch.clientY,
+    width: el.offsetWidth,
+    height: el.offsetHeight
+  };
+  document.addEventListener('touchmove', handleTouchResize, {passive:false});
+  document.addEventListener('touchend', endTouchResize);
+}
+function handleTouchResize(e) {
+  if (!resizingNode) return;
+  const touch = e.touches[0];
+  const dx = touch.clientX - resizeStart.x;
+  const dy = touch.clientY - resizeStart.y;
+  resizingNode.style.width = Math.max(80, resizeStart.width + dx) + 'px';
+  resizingNode.style.height = Math.max(40, resizeStart.height + dy) + 'px';
+  const textEl = resizingNode.querySelector('.node-text');
+  if (textEl.style.whiteSpace !== 'normal') { textEl.style.whiteSpace = 'normal'; }
+  drawConnections();
+}
+function endTouchResize() {
+  if (resizingNode) { captureState();}
+  resizingNode = null;
+  document.removeEventListener('touchmove', handleTouchResize);
+  document.removeEventListener('touchend', endTouchResize);
+}
+
+// Double-click to create new root node
+canvas.addEventListener('dblclick', (e) => {
+  if (e.target === canvas || e.target === connectionsSvg) {
+    createNode('New Idea', e.clientX-60, e.clientY-30, null);
+  }
+});
+canvas.addEventListener('touchend', (e) => {
+  if (e.target === canvas || e.target === connectionsSvg) {
+    if (e.timeStamp - (canvas.__lastTouch || 0) < 500) {
+      // double-tap
+      const touch = e.changedTouches[0];
+      createNode('New Idea', touch.clientX-60, touch.clientY-30, null);
+    }
+    canvas.__lastTouch = e.timeStamp;
+  }
+});
+
+// Save/Load & Gallery (patched for localStorage safety)
+async function saveMap() {
+  const title = mapTitleInput.value.trim();
+  const btn = document.getElementById('save-main-btn');
+  btn.disabled = true; btn.innerHTML = '<span style="font-size:18px;">⏳</span>';
+  if (!title && currentMapIndex === null) {
+    await saveAsMap();
+    btn.disabled = false; btn.innerHTML = '<i data-lucide="save"></i>'; lucide.createIcons();
+    return;
+  }
+  const currentMap = {
+    title: title || originalTitle || 'Untitled Map',
+    nodes: nodes.map(n => ({
+      id: n.id,
+      parentId: n.parentId,
+      text: sanitizeText(n.el.querySelector('.node-text').textContent),
+      x: parseFloat(n.el.style.left),
+      y: parseFloat(n.el.style.top),
+      width: n.el.offsetWidth,
+      height: n.el.offsetHeight
+    })),
+    timestamp: Date.now()
+  };
+  let galleryData = safeGetLocalStorage(LOCAL_STORAGE_KEY);
+  if (currentMapIndex !== null) {
+    galleryData[currentMapIndex] = currentMap;
+  } else {
+    await saveAsMap();
+    btn.disabled = false; btn.innerHTML = '<i data-lucide="save"></i>'; lucide.createIcons();
+    return;
+  }
+  safeSetLocalStorage(LOCAL_STORAGE_KEY, galleryData);
+  originalTitle = currentMap.title;
+  mapTitleInput.value = originalTitle;
+  renderGallery();
+  btn.disabled = false; btn.innerHTML = '<i data-lucide="save"></i>'; lucide.createIcons();
+  await showAlert(`Map saved: ${originalTitle}`);
+}
+async function saveAsMap() {
+  let newTitle = await showPrompt("Enter a title for the new map:", mapTitleInput.value.trim() || 'Untitled Map');
+  if (newTitle === null || newTitle.trim() === '') {
+    await showAlert("Save operation cancelled."); return;
+  }
+  newTitle = newTitle.trim();
+  const currentMap = {
+    title: newTitle,
+    nodes: nodes.map(n => ({
+      id: n.id,
+      parentId: n.parentId,
+      text: sanitizeText(n.el.querySelector('.node-text').textContent),
+      x: parseFloat(n.el.style.left),
+      y: parseFloat(n.el.style.top),
+      width: n.el.offsetWidth,
+      height: n.el.offsetHeight
+    })),
+    timestamp: Date.now()
+  };
+  let galleryData = safeGetLocalStorage(LOCAL_STORAGE_KEY);
+  galleryData.push(currentMap);
+  safeSetLocalStorage(LOCAL_STORAGE_KEY, galleryData);
+  currentMapIndex = galleryData.length - 1;
+  originalTitle = newTitle;
+  mapTitleInput.value = newTitle;
+  renderGallery();
+  await showAlert(`Map saved as: ${newTitle}`);
+}
+
+// Gallery rendering and interaction (rest unchanged from your original)
+function renderGallery() {
+  let galleryData = safeGetLocalStorage(LOCAL_STORAGE_KEY);
+  galleryList.innerHTML = '';
+  galleryData.forEach((map, idx) => {
+    const item = document.createElement('div');
+    item.className = 'gallery-item';
+    item.tabIndex = 0;
+    item.addEventListener('click', () => loadMap(idx));
+    item.addEventListener('keydown', (e) => {
+      if(e.key==='Enter'){ loadMap(idx);}
+    });
+    const info = document.createElement('div');
+    info.className = 'item-info';
+    info.innerHTML = `<div class='item-title'>${sanitizeText(map.title)}</div><div class='item-date'>${new Date(map.timestamp).toLocaleString()}</div>`;
+    const linkBtn = document.createElement('button');
+    linkBtn.className = 'item-action-btn link-btn';
+    linkBtn.setAttribute('aria-label','Get Share Link');
+    linkBtn.innerHTML = "🔗"; // Link emoji
+    linkBtn.addEventListener('click',async (e)=>{
+      e.stopPropagation();
+      const shareUrl = `${APP_BASE_URL}?mapId=${idx}`;
+      await showLink("Shareable Link:", shareUrl);
+    });
+    item.appendChild(linkBtn);
+    item.appendChild(info);
+    const delBtn = document.createElement('button');
+    delBtn.className = 'item-action-btn delete';
+    delBtn.setAttribute('aria-label','Delete Map');
+    delBtn.innerHTML = "🗑️";
+    delBtn.addEventListener('click',async (e)=>{
+      e.stopPropagation();
+      if(await showConfirm('Are you sure you want to delete this map?')){ // CHANGED: Now uses showConfirm
+        galleryData.splice(idx,1);
+        safeSetLocalStorage(LOCAL_STORAGE_KEY,galleryData);
+        renderGallery();
+      }
+    });
+    item.appendChild(delBtn);
+    galleryList.appendChild(item);
+  });
+}
+function loadMap(idx) {
+  let galleryData = safeGetLocalStorage(LOCAL_STORAGE_KEY);
+  if (!galleryData[idx]) return;
+  restoreState(galleryData[idx]);
+  currentMapIndex = idx;
+  originalTitle = galleryData[idx].title;
+  mapTitleInput.value = originalTitle;
+  gallery.style.display = 'none';
+}
+
+// Toolbar/Buttons
+document.getElementById('undo-btn').onclick = ()=>{
+  if(historyIndex>0){ historyIndex--; restoreState(history[historyIndex]); }
+};
+document.getElementById('redo-btn').onclick = ()=>{
+  if(historyIndex<history.length-1){ historyIndex++; restoreState(history[historyIndex]); }
+};
+document.getElementById('save-main-btn').onclick = saveMap;
+document.getElementById('save-dropdown-btn').onclick = ()=>{
+  document.getElementById('save-dropdown-menu').style.display='flex';
+};
+document.getElementById('save-as-menu-item').onclick = async ()=>{
+  document.getElementById('save-dropdown-menu').style.display='none';
+  await saveAsMap();
+};
+document.getElementById('new-btn').onclick = async ()=>{
+  if(nodes.length) {
+    const ans = await showConfirm("Clear current map and start a new one?"); // CHANGED: Now uses showConfirm
+    if(!ans) return;
+  }
+  clearCanvas(); 
+  nodes=[]; 
+  history=[]; 
+  historyIndex=-1; 
+  currentMapIndex=null; 
+  mapTitleInput.value='Untitled';
+  originalTitle='';
+  
+  // *** FIX: Create the initial node after clearing the canvas ***
+  createNode('Central Idea',canvas.offsetWidth/2-60,canvas.offsetHeight/2-30,null);
+  
+  captureState();
+};
+document.getElementById('gallery-btn').onclick = ()=>{
+  renderGallery(); gallery.style.display = gallery.style.display === "none" ? "block" : "none";
+};
+mapTitleInput.onblur = ()=>{ captureState(); };
+
+// Initial root node if none exist
+window.onload = function() {
+  if(nodes.length === 0) createNode('Central Idea',canvas.offsetWidth/2-60,canvas.offsetHeight/2-30,null);
+  lucide.createIcons();
+  updateHistoryButtons();
+};
+// Hide dropdowns/modals on click outside
+window.addEventListener('click', (e)=>{
+  // Only handle closing the save dropdown menu
+  if(!document.getElementById('save-dropdown-btn').contains(e.target)) {
+    document.getElementById('save-dropdown-menu').style.display='none';
+  }
+  // The gallery is now only controlled by the #gallery-btn click handler.
+});
+</script>
+</body>
+</html>
